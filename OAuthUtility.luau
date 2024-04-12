@@ -30,9 +30,9 @@ local OAuthUtil = {
 
 	--Don't touch this
 	usedNonces = {},
-	unreservedCharacterSet = string.split('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~%',""),
-	-- % is excluded as to not have any issues. 
 }
+
+local HttpService = game:GetService("HttpService")
 
 export type headerInformation = {
 	consumerKey: string, 
@@ -63,7 +63,7 @@ OAuthUtil.signatureEncoding = {
 	--key is consumerSecret and tokenSecret
 	["HMAC-SHA1"] = function(consumerSecret: string, tokenSecret: string, signatureBaseString: string)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
-		return HashLib.hmac(HashLib.sha1, key, signatureBaseString) 
+		return HashLib.hmac(HashLib.sha1, key, signatureBaseString)
 	end,
 	["HMAC-SHA256"] = function(consumerSecret, tokenSecret, signatureBaseString)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
@@ -76,36 +76,27 @@ OAuthUtil.signatureEncoding = {
 }
 
 -- UTILITY FUNCTIONS --
-function OAuthUtil.encodeString(strToEncode: string): string
-	local stringSplit = string.split(strToEncode, "")
-	local lengthOfString = #stringSplit
-
-	for i = 1, lengthOfString do
-		if not table.find(OAuthUtil.unreservedCharacterSet, stringSplit[i]) then
-			local octetValue = string.format("%X", string.byte(stringSplit[i]))
-
-			stringSplit[i] = `%{octetValue}` 
-		end
-	end
+function OAuthUtil.fromhex(str)
+    return (str:gsub('..', function (cc)
+        return string.char(tonumber(cc, 16))
+    end))
+end
 	
-	return table.concat(stringSplit)
+function OAuthUtil.encodeString(strToEncode: string): string
+	local encodedStr = string.gsub(strToEncode, "[^%w%-%._~']", function(char)
+		return `%{string.format("%X", string.byte(char))}`
+	end)
+	return encodedStr
 end
 
 function OAuthUtil.generateNonce(): string
-	local letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	local nonce = HttpService:GenerateGUID(false)
 
-	local output = ""
-
-	for	i = 1, OAuthUtil.nonceLength do
-		local r = math.random(1, string.len(letters))
-		output = output .. string.sub(letters,r,r)
-	end
-
-	if table.find(OAuthUtil.usedNonces,output) then
+	if table.find(OAuthUtil.usedNonces,nonce) then
 		return OAuthUtil.generateNonce()
 	else
-		table.insert(OAuthUtil.usedNonces,output)
-		return output
+		table.insert(OAuthUtil.usedNonces,nonce)
+		return nonce
 	end
 end
 
@@ -115,8 +106,8 @@ function OAuthUtil.encodeHeader(array: {}): nil
 	end
 end
 
-function OAuthUtil.generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string): string
-	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret)
+function OAuthUtil.generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string, signatureBaseString: string): string
+	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret, signatureBaseString)
 end
 
 function OAuthUtil.sortParameters(array: {})
@@ -168,14 +159,11 @@ function OAuthUtil.generateHeader(parameters: headerInformation): string
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
 
-	local oauth_signature = OAuthUtil.generateSignature(parameters.signatureMethod,parameters.consumerSecret,parameters.tokenSecret)
+	local oauth_signature = OAuthUtil.generateSignature(parameters.signatureMethod,parameters.consumerSecret,parameters.tokenSecret, signatureBaseString)
 
 	if typeof(oauth_signature) == "string" then
-		print(oauth_signature)
-	else
-		print(oauth_signature())
+		print(base64.encode(OAuthUtil.fromhex(oauth_signature)))
 	end
-	
 
 	return baseParameterString
 end
