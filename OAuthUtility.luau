@@ -30,7 +30,7 @@ local OAuthUtil = {
 
 	--Don't touch this
 	usedNonces = {},
-	unreservedCharacterSet = string.split('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~',""),
+	unreservedCharacterSet = string.split('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~%',""),
 	-- % is excluded as to not have any issues. 
 }
 
@@ -47,7 +47,9 @@ export type headerInformation = {
 	overrideTimestamp: number?,
 }
 
-local HashLib = require"sha2"
+
+local HashLib = require("sha2")
+local base64 = require("base64")
 
 OAuthUtil.signatureEncoding = {
 	["PLAINTEXT"] = function(consumerSecret, tokenSecret)
@@ -59,17 +61,17 @@ OAuthUtil.signatureEncoding = {
 	end,
 
 	--key is consumerSecret and tokenSecret
-	["HMAC-SHA1"] = function(consumerSecret, tokenSecret, signatureBaseString)
+	["HMAC-SHA1"] = function(consumerSecret: string, tokenSecret: string, signatureBaseString: string)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
-		HashLib.HMAC(HashLib.SHA1, key, signatureBaseString) 
+		return HashLib.hmac(HashLib.sha1, key, signatureBaseString) 
 	end,
 	["HMAC-SHA256"] = function(consumerSecret, tokenSecret, signatureBaseString)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
-		HashLib.HMAC(HashLib.SHA256, key, signatureBaseString) 
+		return HashLib.hmac(HashLib.sha256, key, signatureBaseString) 
 	end,
 	["HMAC-SHA512"] = function(consumerSecret, tokenSecret, signatureBaseString)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
-		HashLib.HMAC(HashLib.SHA512, key, signatureBaseString) 
+		return HashLib.hmac(HashLib.sha512, key, signatureBaseString) 
 	end
 }
 
@@ -168,7 +170,12 @@ function OAuthUtil.generateHeader(parameters: headerInformation): string
 
 	local oauth_signature = OAuthUtil.generateSignature(parameters.signatureMethod,parameters.consumerSecret,parameters.tokenSecret)
 
-	print(oauth_signature)
+	if typeof(oauth_signature) == "string" then
+		print(oauth_signature)
+	else
+		print(oauth_signature())
+	end
+	
 
 	return baseParameterString
 end
@@ -185,8 +192,5 @@ OAuthUtil.generateHeader({
 	overrideNonce = "dskfm329sdam121",
 	overrideTimestamp = 1424991993
 })
-
---GET&https%3A%2F%2Fwww.google.com%2F&oauth_consumer_key%3DclientIdentifier%26oauth_nonce%3Ddskfm329sdam121%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D1424991993%26oauth_token%3DaccessT%2521oken%26oauth_version%3D1.0
---GET&https%3A%2F%2Fwww.google.com%2F&oauth_consumer_key%3DclientIdentifier%26oauth_nonce%3Ddskfm329sdam121%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D1424991993%26oauth_token%3DaccessT%2521oken%26oauth_version%3D1.0
 
 return OAuthUtil
