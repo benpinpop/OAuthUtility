@@ -24,6 +24,14 @@ SOFTWARE.
 
 --!strict
 
+export type headerInformation = {
+	consumerKey: string, 
+	consumerSecret: string?, 
+	callbackUrl: string?,
+	requestUrl: string,
+	signatureMethod: "PLAINTEXT" | "HMAC-SHA1" | "HMAC-SHA256" | "HMAC-SHA512",
+}
+
 local OAuthUtil = {
 	--CONFIGURATION
 	nonceLength = 15, --Recommended: 11-15. Messing with this is not recommended unless you know what you're doing.
@@ -32,35 +40,59 @@ local OAuthUtil = {
 	usedNonces = {},
 }
 
-local HttpService = game:GetService("HttpService")
+OAuthUtil.__index = OAuthUtil
 
-export type headerInformation = {
-	consumerKey: string, 
-	token: string, 
-	consumerSecret: string?, 
-	tokenSecret: string?, 
-	callbackUrl: string?,
-	signatureMethod: "PLAINTEXT" | "HMAC-SHA1" | "HMAC-SHA256" | "HMAC-SHA512",
-	requestType: "OPTIONS" | "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "TRACE" | "CONNECT" | "PATCH", 
-	requestUrl: string,
-	overrideNonce: string?,
-	overrideTimestamp: number?,
-}
-
+--local HttpService = game:GetService("HttpService")
 
 local HashLib = require("sha2")
 local base64 = require("base64")
 
+local function convertHexToString(str)
+    return (str:gsub('..', function (cc)
+        return string.char(tonumber(cc, 16))
+    end))
+end
+	
+local function encodeString(strToEncode: string): string
+	local encodedStr = string.gsub(strToEncode, "[^%w%-%._~']", function(char)
+		return `%{string.format("%X", string.byte(char))}`
+	end)
+	return encodedStr
+end
+
+local function encodeHeader(array: {}): nil
+	for index, value in pairs(array) do
+		array[index] = encodeString(value) 
+	end
+
+	return array
+end
+
+local function generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string, signatureBaseString: string): string
+	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret, signatureBaseString)
+end
+
+local function sortParameters(array: {})
+	local sortOrder = {}
+
+	for index,value in pairs(array) do
+		table.insert(sortOrder,index)
+	end
+
+	table.sort(sortOrder)
+
+	return sortOrder
+end
+
+--SIGNATURES
 OAuthUtil.signatureEncoding = {
 	["PLAINTEXT"] = function(consumerSecret, tokenSecret)
 		if tokenSecret then
-			return OAuthUtil.encodeString(consumerSecret) .. "&" .. OAuthUtil.encodeString(tokenSecret)
+			return encodeString(consumerSecret) .. "&" .. encodeString(tokenSecret)
 		else
-			return OAuthUtil.encodeString(consumerSecret) .. "&"
+			return encodeString(consumerSecret) .. "&"
 		end
 	end,
-
-	--key is consumerSecret and tokenSecret
 	["HMAC-SHA1"] = function(consumerSecret: string, tokenSecret: string, signatureBaseString: string)
 		local key = OAuthUtil.signatureEncoding.PLAINTEXT(consumerSecret,tokenSecret)
 		return HashLib.hmac(HashLib.sha1, key, signatureBaseString)
@@ -76,20 +108,9 @@ OAuthUtil.signatureEncoding = {
 }
 
 -- UTILITY FUNCTIONS --
-function OAuthUtil.fromhex(str)
-    return (str:gsub('..', function (cc)
-        return string.char(tonumber(cc, 16))
-    end))
-end
-	
-function OAuthUtil.encodeString(strToEncode: string): string
-	local encodedStr = string.gsub(strToEncode, "[^%w%-%._~']", function(char)
-		return `%{string.format("%X", string.byte(char))}`
-	end)
-	return encodedStr
-end
 
 function OAuthUtil.generateNonce(): string
+	--[[
 	local nonce = HttpService:GenerateGUID(false)
 
 	if table.find(OAuthUtil.usedNonces,nonce) then
@@ -98,31 +119,11 @@ function OAuthUtil.generateNonce(): string
 		table.insert(OAuthUtil.usedNonces,nonce)
 		return nonce
 	end
+	--]]
+	return ""
 end
 
-function OAuthUtil.encodeHeader(array: {}): nil
-	for index, value in pairs(array) do
-		array[index] = OAuthUtil.encodeString(value) 
-	end
-end
-
-function OAuthUtil.generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string, signatureBaseString: string): string
-	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret, signatureBaseString)
-end
-
-function OAuthUtil.sortParameters(array: {})
-	local sortOrder = {}
-
-	for index,value in pairs(array) do
-		table.insert(sortOrder,index)
-	end
-
-	table.sort(sortOrder)
-
-	return sortOrder
-end
-
-function OAuthUtil.createBaseParameterString(sortOrder, OAuthHeader)
+function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader)
 	local baseString: string = ""
 	
 	for index,headerIndex in pairs(sortOrder) do
@@ -138,37 +139,90 @@ function OAuthUtil.createBaseParameterString(sortOrder, OAuthHeader)
 	return baseString
 end
 
-function OAuthUtil.generateHeader(parameters: headerInformation): string
-	local OAuthHeader = {
-		["oauth_signature_method"] = parameters.signatureMethod,
-		["oauth_version"] = "1.0",
-		["oauth_consumer_key"] = parameters.consumerKey, 
-		["oauth_token"] = parameters.token,
-		["oauth_callback"] = parameters.callbackUrl,
-		["oauth_nonce"] = parameters.overrideNonce or OAuthUtil.generateNonce(),
-		["oauth_timestamp"] = parameters.overrideTimestamp or os.time(),
+--Generate a signature
+--Generate the actual header
+
+function OAuthUtil.new(parameters: headerInformation)
+	if not parameters.consumerSecret then error("Request failed: Cannot generate header without consumerSecret") end
+
+	local requestInformation = {
+		["parameters"] = {
+			["oauth_signature_method"] = parameters.signatureMethod,
+			["oauth_version"] = "1.0",
+			["oauth_consumer_key"] = parameters.consumerKey, 
+			["oauth_consumer_secret"] = parameters.consumerSecret,
+			["oauth_callback"] = parameters.callbackUrl,
+		},
+		["requestUrl"] = parameters.requestUrl -- example https://api.schoology.com/
 	}
 
-	OAuthUtil.encodeHeader(OAuthHeader)
-	local sortOrder = OAuthUtil.sortParameters(OAuthHeader)
+	setmetatable(requestInformation, OAuthUtil)
 
-	local baseParameterString = OAuthUtil.createBaseParameterString(sortOrder, OAuthHeader)
+	return requestInformation
+end
 
-	local methodUrlString = `{OAuthUtil.encodeString(parameters.requestType)}&{OAuthUtil.encodeString(parameters.requestUrl)}`
-	baseParameterString = OAuthUtil.encodeString(baseParameterString)
+function OAuthUtil:requestToken(requestEndpoint: string,overrideNonce: string, overrideTimestamp: number)
+	-- request endpoint would be v1/oauth/request_token
+	local authorizationHeader = OAuthUtil:generateHeader(overrideNonce, overrideTimestamp)
+
+	local request = HttpService:RequestAsync({
+		Url = self.requestUrl .. requestEndpoint, -- This website helps debug HTTP requests
+		Method = "GET",
+		Headers = {
+			["Content-Type"] = "application/json", 
+			["Authorization"] = authorizationHeader,
+		},
+	})
+
+	
+	if request.Success then
+		print("Status code:", request.StatusCode, request.StatusMessage)
+		print("Response body:\n", request.Body)
+	else
+		print("The request failed:", request.StatusCode, request.StatusMessage)
+	end
+end
+
+function OAuthUtil:accessToken()
+	
+end
+
+function OAuthUtil:createSignature(newRequestInformation: string,requestType): string
+	local encodedParameters = encodeHeader(table.clone(newRequestInformation))
+	local sortOrder = sortParameters(encodedParameters)
+
+	local methodUrlString = `{encodeString(requestType)}&{encodeString(self.requestUrl)}`
+	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, newRequestInformation)
+
+	baseParameterString = encodeString(baseParameterString)
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
 
-	local oauth_signature = OAuthUtil.generateSignature(parameters.signatureMethod,parameters.consumerSecret,parameters.tokenSecret, signatureBaseString)
+	local oauth_signature = generateSignature(self.parameters.signatureMethod,self.parameters.consumerSecret,self.parameters.tokenSecret, signatureBaseString)
+	oauth_signature = encodeString(base64.encode(convertHexToString(oauth_signature)))
 
-	if typeof(oauth_signature) == "string" then
-		print(base64.encode(OAuthUtil.fromhex(oauth_signature)))
-	end
-
-	return baseParameterString
+	return oauth_signature
 end
 
-OAuthUtil.generateHeader({
+function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: number, requestType: string): string
+	local newRequestInformation = table.clone(self.parameters)
+
+	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil.generateNonce()
+	newRequestInformation["oauth_timestamp"] = overrideTimestamp or os.time()
+	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,requestType)
+
+	local sortOrder = sortParameters(newRequestInformation)
+	
+	local signatureBaseString = OAuthUtil.createSignatureBaseString(sortOrder, newRequestInformation)
+
+	print(signatureBaseString)
+
+	return signatureBaseString
+end
+
+
+
+OAuthUtil.new({
 	consumerKey = "clientIdentifier",
 	token = "accessT!oken",
 	consumerSecret = "clientSecret",
@@ -177,8 +231,6 @@ OAuthUtil.generateHeader({
 	signatureMethod = "HMAC-SHA1",
 	requestType = "GET",
 	requestUrl = "https://www.google.com/",
-	overrideNonce = "dskfm329sdam121",
-	overrideTimestamp = 1424991993
-})
+}):generateHeader("dskfm329sdam121",1424991993,"GET")
 
 return OAuthUtil
