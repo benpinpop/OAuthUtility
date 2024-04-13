@@ -123,7 +123,7 @@ function OAuthUtil.generateNonce(_retries: number): string
 	end
 end
 
-function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader)
+function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader, useAmpersand: boolean)
 	local baseString: string = ""
 	
 	for index,headerIndex in pairs(sortOrder) do
@@ -132,7 +132,7 @@ function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader)
 		baseString ..= headerIndex .. "=" .. OAuthHeader[headerIndex]
 
 		if index ~= #sortOrder then
-			baseString ..= "&"
+			baseString ..= useAmpersand and "&" or ","
 		end
 	end
 
@@ -161,30 +161,16 @@ function OAuthUtil.new(parameters: headerInformation)
 	return requestInformation
 end
 
-function OAuthUtil:requestToken(requestEndpoint: string,overrideNonce: string, overrideTimestamp: number)
-	-- request endpoint would be v1/oauth/request_token
-	local authorizationHeader = OAuthUtil:generateHeader(overrideNonce, overrideTimestamp)
-
-	local request = HttpService:RequestAsync({
-		Url = self.requestUrl .. requestEndpoint, -- This website helps debug HTTP requests
-		Method = "GET",
-		Headers = {
-			["Content-Type"] = "application/json", 
-			["Authorization"] = authorizationHeader,
-		},
-	})
-
-	
-	if request.Success then
-		print("Status code:", request.StatusCode, request.StatusMessage)
-		print("Response body:\n", request.Body)
-	else
-		print("The request failed:", request.StatusCode, request.StatusMessage)
-	end
+function OAuthUtil:setRequestUrl(requestUrl: string): nil
+	self["requestUrl"] = requestUrl
 end
 
-function OAuthUtil:accessToken()
-	
+function OAuthUtil:setTokenSecret(tokenSecret: string): nil
+	self.parameters["oauth_token_secret"] = tokenSecret
+end
+
+function OAuthUtil:setToken(token: string): nil
+	self.parameters["oauth_token"] = token
 end
 
 function OAuthUtil:createSignature(newRequestInformation: string,requestType): string
