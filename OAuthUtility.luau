@@ -42,7 +42,7 @@ local OAuthUtil = {
 
 OAuthUtil.__index = OAuthUtil
 
---local HttpService = game:GetService("HttpService")
+local HttpService = game:GetService("HttpService")
 
 local HashLib = require("sha2")
 local base64 = require("base64")
@@ -68,22 +68,6 @@ local function encodeHeader(array: {}): nil
 	return array
 end
 
-local function generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string, signatureBaseString: string): string
-	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret, signatureBaseString)
-end
-
-local function sortParameters(array: {})
-	local sortOrder = {}
-
-	for index,value in pairs(array) do
-		table.insert(sortOrder,index)
-	end
-
-	table.sort(sortOrder)
-
-	return sortOrder
-end
-
 --SIGNATURES
 OAuthUtil.signatureEncoding = {
 	["PLAINTEXT"] = function(consumerSecret, tokenSecret)
@@ -107,20 +91,36 @@ OAuthUtil.signatureEncoding = {
 	end
 }
 
--- UTILITY FUNCTIONS --
+local function generateSignature(signatureType: string, consumerSecret: string, tokenSecret: string, signatureBaseString: string): string
+	return OAuthUtil.signatureEncoding[signatureType](consumerSecret,tokenSecret, signatureBaseString)
+end
 
-function OAuthUtil.generateNonce(): string
-	--[[
+local function sortParameters(array: {})
+	local sortOrder = {}
+
+	for index,value in pairs(array) do
+		table.insert(sortOrder,index)
+	end
+
+	table.sort(sortOrder)
+
+	return sortOrder
+end
+
+-- UTILITY FUNCTIONS --
+function OAuthUtil.generateNonce(_retries: number): string
+	if _retries > 15 then error(`Nonce (Random String) generation reached max of: {_retries} retries.`) end
+
 	local nonce = HttpService:GenerateGUID(false)
 
 	if table.find(OAuthUtil.usedNonces,nonce) then
-		return OAuthUtil.generateNonce()
+		if not _retries then _retries = 0 end
+
+		return OAuthUtil.generateNonce(_retries+1)
 	else
 		table.insert(OAuthUtil.usedNonces,nonce)
 		return nonce
 	end
-	--]]
-	return ""
 end
 
 function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader)
@@ -192,13 +192,12 @@ function OAuthUtil:createSignature(newRequestInformation: string,requestType): s
 	local sortOrder = sortParameters(encodedParameters)
 
 	local methodUrlString = `{encodeString(requestType)}&{encodeString(self.requestUrl)}`
-	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, newRequestInformation)
+	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters)
 
 	baseParameterString = encodeString(baseParameterString)
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
-
-	local oauth_signature = generateSignature(self.parameters.signatureMethod,self.parameters.consumerSecret,self.parameters.tokenSecret, signatureBaseString)
+	local oauth_signature = generateSignature(self.parameters.oauth_signature_method,self.parameters.oauth_consumer_secret,self.parameters.oauth_token_secret, signatureBaseString)
 	oauth_signature = encodeString(base64.encode(convertHexToString(oauth_signature)))
 
 	return oauth_signature
@@ -206,23 +205,18 @@ end
 
 function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: number, requestType: string): string
 	local newRequestInformation = table.clone(self.parameters)
-
+	
 	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil.generateNonce()
 	newRequestInformation["oauth_timestamp"] = overrideTimestamp or os.time()
 	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,requestType)
-
 	local sortOrder = sortParameters(newRequestInformation)
 	
 	local signatureBaseString = OAuthUtil.createSignatureBaseString(sortOrder, newRequestInformation)
 
-	print(signatureBaseString)
-
-	return signatureBaseString
+	return `OAuth {signatureBaseString}` 
 end
 
-
-
-OAuthUtil.new({
+local new = OAuthUtil.new({
 	consumerKey = "clientIdentifier",
 	token = "accessT!oken",
 	consumerSecret = "clientSecret",
@@ -231,6 +225,9 @@ OAuthUtil.new({
 	signatureMethod = "HMAC-SHA1",
 	requestType = "GET",
 	requestUrl = "https://www.google.com/",
-}):generateHeader("dskfm329sdam121",1424991993,"GET")
+})
+
+local newHeader = new:generateHeader("dskfm329sdam121",1424991993,"GET")
+print(newHeader)
 
 return OAuthUtil
