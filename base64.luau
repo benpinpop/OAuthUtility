@@ -47,28 +47,4 @@ function b64.encode(str)
 	return table.concat(output)
 end
 
-local function runTests()
-    local tests = {
-        {input = "", expected = ""},
-        {input = "a", expected = "YQ=="},
-        {input = "Hello, World!", expected = "SGVsbG8sIFdvcmxkIQ=="},
-        {input = "1234567890", expected = "MTIzNDU2Nzg5MA=="},
-        {input = "Lua is awesome!", expected = "THVhIGlzIGF3ZXNvbWUh"},
-        {input = "base64 encoding", expected = "YmFzZTY0IGVuY29kaW5n"}
-    }
-    
-    -- Run each test case
-    for i, test in ipairs(tests) do
-        local result = b64.encode(test.input)
-        if result == test.expected then
-            print(string.format("Test %d: PASSED", i))
-        else
-            print(string.format("Test %d: FAILED - Expected: %s, Got: %s", i, test.expected, result))
-        end
-    end
-end
-
--- Run tests
-runTests()
-
 return b64
