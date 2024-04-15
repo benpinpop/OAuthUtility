@@ -42,7 +42,13 @@ local OAuthUtil = {
 
 OAuthUtil.__index = OAuthUtil
 
-local HttpService = game:GetService("HttpService")
+local HttpService = game and game:GetService("HttpService") or {GenerateGUID = function()
+	local randomString = ""
+
+	for i = 1, OAuthUtil.nonceLength do
+		randomString ..= math.random(0,9) 
+	end
+end}
 
 local HashLib = require("sha2")
 local base64 = require("base64")
@@ -150,9 +156,11 @@ function OAuthUtil.new(parameters: headerInformation)
 			["oauth_signature_method"] = parameters.signatureMethod,
 			["oauth_version"] = "1.0",
 			["oauth_consumer_key"] = parameters.consumerKey, 
-			["oauth_consumer_secret"] = parameters.consumerSecret,
 			["oauth_callback"] = parameters.callbackUrl,
+			["oauth_token"] = parameters.token
 		},
+		["oauth_token_secret"] = parameters.tokenSecret,
+		["oauth_consumer_secret"] = parameters.consumerSecret,
 		["requestUrl"] = parameters.requestUrl -- example https://api.schoology.com/
 	}
 
@@ -166,11 +174,11 @@ function OAuthUtil:setRequestUrl(requestUrl: string): nil
 end
 
 function OAuthUtil:setTokenSecret(tokenSecret: string): nil
-	self.parameters["oauth_token_secret"] = tokenSecret
+	self["oauth_token_secret"] = tokenSecret
 end
 
 function OAuthUtil:setToken(token: string): nil
-	self.parameters["oauth_token"] = token
+	self["oauth_token"] = token
 end
 
 function OAuthUtil:createSignature(newRequestInformation: string,requestType): string
@@ -178,12 +186,12 @@ function OAuthUtil:createSignature(newRequestInformation: string,requestType): s
 	local sortOrder = sortParameters(encodedParameters)
 
 	local methodUrlString = `{encodeString(requestType)}&{encodeString(self.requestUrl)}`
-	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters)
+	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters,true)
 
 	baseParameterString = encodeString(baseParameterString)
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
-	local oauth_signature = generateSignature(self.parameters.oauth_signature_method,self.parameters.oauth_consumer_secret,self.parameters.oauth_token_secret, signatureBaseString)
+	local oauth_signature = generateSignature(self.parameters.oauth_signature_method,self.oauth_consumer_secret,self.oauth_token_secret, signatureBaseString)
 	oauth_signature = encodeString(base64.encode(convertHexToString(oauth_signature)))
 
 	return oauth_signature
@@ -195,6 +203,7 @@ function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: numb
 	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil.generateNonce()
 	newRequestInformation["oauth_timestamp"] = overrideTimestamp or os.time()
 	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,requestType)
+
 	local sortOrder = sortParameters(newRequestInformation)
 	
 	local signatureBaseString = OAuthUtil.createSignatureBaseString(sortOrder, newRequestInformation)
