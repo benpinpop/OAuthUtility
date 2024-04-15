@@ -38,8 +38,8 @@ function b64.encode(str)
 
 		output[index] = SEQ[bit32.extract(b, 18, 6)]
 		output[index + 1] = SEQ[bit32.extract(b, 12, 6)]
-		output[index + 2] = SEQ[bit32.extract(b, 6, 6)] or "="
-		output[index + 3] = SEQ[bit32.band(b, 0, 63)] or "="
+        output[index + 2] = b1 and SEQ[bit32.extract(b, 6, 6)] or "="
+        output[index + 3] = b2 and SEQ[bit32.band(b, 63)] or "="
 
 		index += 4
 	end
@@ -47,29 +47,28 @@ function b64.encode(str)
 	return table.concat(output)
 end
 
-function b64.decode(hash)
-	-- given a 24 bit word (4 6-bit letters), decode 3 bytes from it
-	local len = string.len(hash)
-	local output = table.create(len * 0.75)
-	
-	local index = 1
-	for i = 1, len, 4 do
-		local c0, c1, c2, c3 = string.byte(hash, i, i + 3)
-
-		local b = 
-			bit32.lshift(INDEX[c0], 18)
-			+ bit32.lshift(INDEX[c1], 12)
-			+ bit32.lshift(INDEX[c2], 6)
-			+ (INDEX[c3])
-		
-
-		output[index] = STRING_FAST[bit32.extract(b, 16, 8)]
-		output[index + 1] = c2 ~= "=" and STRING_FAST[bit32.extract(b, 8, 8)] or "="
-		output[index + 2] = c3 ~= "=" and STRING_FAST[bit32.band(b, 0xFF)] or "="
-		index += 3
-	end
-
-	return table.concat(output)
+local function runTests()
+    local tests = {
+        {input = "", expected = ""},
+        {input = "a", expected = "YQ=="},
+        {input = "Hello, World!", expected = "SGVsbG8sIFdvcmxkIQ=="},
+        {input = "1234567890", expected = "MTIzNDU2Nzg5MA=="},
+        {input = "Lua is awesome!", expected = "THVhIGlzIGF3ZXNvbWUh"},
+        {input = "base64 encoding", expected = "YmFzZTY0IGVuY29kaW5n"}
+    }
+    
+    -- Run each test case
+    for i, test in ipairs(tests) do
+        local result = b64.encode(test.input)
+        if result == test.expected then
+            print(string.format("Test %d: PASSED", i))
+        else
+            print(string.format("Test %d: FAILED - Expected: %s, Got: %s", i, test.expected, result))
+        end
+    end
 end
+
+-- Run tests
+runTests()
 
 return b64
