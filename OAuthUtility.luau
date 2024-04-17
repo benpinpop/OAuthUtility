@@ -26,9 +26,12 @@ SOFTWARE.
 
 export type headerInformation = {
 	consumerKey: string, 
-	consumerSecret: string?, 
+	consumerSecret: string, 
 	callbackUrl: string?,
+	token: string?,
+	tokenSecret: string?,
 	requestUrl: string,
+	requestType: string,
 	signatureMethod: "PLAINTEXT" | "HMAC-SHA1" | "HMAC-SHA256" | "HMAC-SHA512",
 }
 
