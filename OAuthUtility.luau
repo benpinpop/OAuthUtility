@@ -53,13 +53,13 @@ end}
 local HashLib = require("sha2")
 local base64 = require("base64")
 
-local function convertHexToString(str)
+OAuthUtil.convertHexToString = function(str)
     return (str:gsub('..', function (cc)
         return string.char(tonumber(cc, 16))
     end))
 end
 	
-local function encodeString(strToEncode: string): string
+OAuthUtil.encodeString = function(strToEncode: string): string
 	local encodedStr = string.gsub(strToEncode, "[^%w%-%._~']", function(char)
 		return `%{string.format("%X", string.byte(char))}`
 	end)
@@ -68,7 +68,7 @@ end
 
 local function encodeHeader(array: {}): nil
 	for index, value in pairs(array) do
-		array[index] = encodeString(value) 
+		array[index] = OAuthUtil.encodeString(value) 
 	end
 
 	return array
@@ -78,9 +78,9 @@ end
 OAuthUtil.signatureEncoding = {
 	["PLAINTEXT"] = function(consumerSecret, tokenSecret)
 		if tokenSecret then
-			return encodeString(consumerSecret) .. "&" .. encodeString(tokenSecret)
+			return OAuthUtil.encodeString(consumerSecret) .. "&" .. OAuthUtil.encodeString(tokenSecret)
 		else
-			return encodeString(consumerSecret) .. "&"
+			return OAuthUtil.encodeString(consumerSecret) .. "&"
 		end
 	end,
 	["HMAC-SHA1"] = function(consumerSecret: string, tokenSecret: string, signatureBaseString: string)
@@ -114,8 +114,8 @@ local function sortParameters(array: {})
 end
 
 -- UTILITY FUNCTIONS --
-function OAuthUtil.generateNonce(_retries: number): string
-	if _retries > 15 then error(`Nonce (Random String) generation reached max of: {_retries} retries.`) end
+function OAuthUtil.generateNonce(_retries: number?): string
+	if _retries and _retries > 15 then error(`Nonce (Random String) generation reached max of: {_retries} retries.`) end
 
 	local nonce = HttpService:GenerateGUID(false)
 
@@ -161,6 +161,7 @@ function OAuthUtil.new(parameters: headerInformation)
 		},
 		["oauth_token_secret"] = parameters.tokenSecret,
 		["oauth_consumer_secret"] = parameters.consumerSecret,
+		["requestType"] = parameters.requestType,
 		["requestUrl"] = parameters.requestUrl -- example https://api.schoology.com/
 	}
 
@@ -173,6 +174,10 @@ function OAuthUtil:setRequestUrl(requestUrl: string): nil
 	self["requestUrl"] = requestUrl
 end
 
+function OAuthUtil:setRequestType(requestType: string): nil
+	self["requestType"] = requestType
+end
+
 function OAuthUtil:setTokenSecret(tokenSecret: string): nil
 	self["oauth_token_secret"] = tokenSecret
 end
@@ -181,28 +186,28 @@ function OAuthUtil:setToken(token: string): nil
 	self["oauth_token"] = token
 end
 
-function OAuthUtil:createSignature(newRequestInformation: string,requestType): string
+function OAuthUtil:createSignature(newRequestInformation: string): string
 	local encodedParameters = encodeHeader(table.clone(newRequestInformation))
 	local sortOrder = sortParameters(encodedParameters)
 
-	local methodUrlString = `{encodeString(requestType)}&{encodeString(self.requestUrl)}`
+	local methodUrlString = `{OAuthUtil.encodeString(self.requestType)}&{OAuthUtil.encodeString(self.requestUrl)}`
 	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters,true)
 
-	baseParameterString = encodeString(baseParameterString)
+	baseParameterString = OAuthUtil.encodeString(baseParameterString)
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
 	local oauth_signature = generateSignature(self.parameters.oauth_signature_method,self.oauth_consumer_secret,self.oauth_token_secret, signatureBaseString)
-	oauth_signature = encodeString(base64.encode(convertHexToString(oauth_signature)))
+	oauth_signature = OAuthUtil.encodeString(base64.encode(OAuthUtil.convertHexToString(oauth_signature)))
 
 	return oauth_signature
 end
 
-function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: number, requestType: string): string
+function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: number): string
 	local newRequestInformation = table.clone(self.parameters)
 	
 	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil.generateNonce()
 	newRequestInformation["oauth_timestamp"] = overrideTimestamp or os.time()
-	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,requestType)
+	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,self.requestType)
 
 	local sortOrder = sortParameters(newRequestInformation)
 	
@@ -210,20 +215,5 @@ function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: numb
 
 	return `OAuth {signatureBaseString}` 
 end
-
-local new = OAuthUtil.new({
-	consumerKey = "clientIdentifier",
-	token = "accessT!oken",
-	consumerSecret = "clientSecret",
-	tokenSecret = "tokenSecret",
-	callbackUrl = nil,
-	signatureMethod = "HMAC-SHA1",
-	requestType = "GET",
-	requestUrl = "https://www.google.com/",
-})
-
-local newHeader = new:generateHeader("dskfm329sdam121",1424991993,"GET")
-
-print(newHeader)
 
 return OAuthUtil
