@@ -26,6 +26,7 @@ local function testPercentEncoding()
 end
 
 local function testHeaders()
+    local t = os.clock()
     local test1 = OAuthUtil.new({
         consumerKey = "clientIdentifier",
         token = "accessT!oken",
@@ -58,7 +59,7 @@ local function testHeaders()
 end
 
 -- Taken from: https://github.com/Egor-Skriptunoff/pure_lua_SHA/blob/master/sha2_test.lua
-local function test_hmac()
+local function testHmac()
 
     local hmac = sha.hmac
  
@@ -87,9 +88,9 @@ local function test_hmac()
     assert(not pcall(hmac, function(x) return sha.sha256(x) end, "key", "message"))  -- must raise "unknown hash function" error
 
     print("Hashing tests passed.")
- end
+end
 
-test_hmac()
+testHmac()
 testHexConversion()
 testPercentEncoding()
 testHeaders()
