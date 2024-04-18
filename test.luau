@@ -107,6 +107,7 @@ end
 local function benchmarkHeaderGeneration(signatureType: "HMAC-SHA1" | "HMAC-SHA256" | "HMAC-SHA512" | "PLAINTEXT")
     local iterations = 10000
     local startTime = os.clock()
+    local times = {}
  
      for i = 1, iterations do
          local test = OAuthUtil.new({
@@ -120,17 +121,28 @@ local function benchmarkHeaderGeneration(signatureType: "HMAC-SHA1" | "HMAC-SHA2
              requestUrl = "https://www.google.com/",
          })
  
+        local start = os.clock()
         test:generateHeader(generateRandomString(math.random(10,15)), 1424991993)
+        local elapsed = os.clock() - start
+        table.insert(times, elapsed)
      end
  
      local endTime = os.clock()
      local elapsedTime = endTime - startTime
      local averageTime = elapsedTime / iterations
  
+    table.sort(times)
+    local percentile50 = times[math.floor(iterations * (1 - 0.5))]
+    local percentile95 = times[math.floor(iterations * (1 - 0.95))]
+    local percentile99 = times[math.floor(iterations * (1 - 0.99))]
+ 
      print("Benchmark results for: " .. signatureType)
      print("Iterations: " .. iterations)
      print("Total time: " .. elapsedTime .. " seconds")
      print("Average time per iteration: " .. averageTime .. " seconds")
+     print("50th percentile: " .. percentile50 .. " seconds")
+     print("95th percentile: " .. percentile95 .. " seconds")
+     print("99th percentile: " .. percentile99 .. " seconds")
  end
 
 testHexConversion()
