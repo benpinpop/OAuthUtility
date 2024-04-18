@@ -38,9 +38,6 @@ export type headerInformation = {
 local OAuthUtil = {
 	--CONFIGURATION
 	nonceLength = 15, --Recommended: 11-15. Messing with this is not recommended unless you know what you're doing.
-
-	--Don't touch this
-	usedNonces = {},
 }
 
 OAuthUtil.__index = OAuthUtil
@@ -117,39 +114,38 @@ local function sortParameters(array: {})
 end
 
 -- UTILITY FUNCTIONS --
-function OAuthUtil.generateNonce(_retries: number?): string
+function OAuthUtil:generateNonce(_retries: number?): string
 	if _retries and _retries > 15 then error(`Nonce (Random String) generation reached max of: {_retries} retries.`) end
 
 	local nonce = HttpService:GenerateGUID(false)
 
-	if table.find(OAuthUtil.usedNonces,nonce) then
+	if table.find(self.usedNonces,nonce) then
 		if not _retries then _retries = 0 end
 
-		return OAuthUtil.generateNonce(_retries+1)
+		return OAuthUtil:generateNonce(_retries+1)
 	else
-		table.insert(OAuthUtil.usedNonces,nonce)
+		table.insert(self.usedNonces,nonce)
 		return nonce
 	end
 end
 
-function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader, useAmpersand: boolean)
-	local baseString: string = ""
-	
-	for index,headerIndex in pairs(sortOrder) do
-		if not OAuthHeader[headerIndex] then warn(`{headerIndex} not found with OAuthHeader!`) continue end
+function OAuthUtil.createSignatureBaseString(sortOrder, OAuthHeader, useAmpersand: boolean)	
+	local newArray = {}
 
-		baseString ..= headerIndex .. "=" .. OAuthHeader[headerIndex]
+	for index,headerIndex in pairs(sortOrder) do
+		if not OAuthHeader[headerIndex] then warn(headerIndex .. "not found with OAuthHeader!") continue end
+
+		newArray[#newArray+1] = headerIndex
+		newArray[#newArray+1] = "="
+		newArray[#newArray+1] = OAuthHeader[headerIndex]
 
 		if index ~= #sortOrder then
-			baseString ..= useAmpersand and "&" or ","
+			newArray[#newArray+1] = useAmpersand and "&" or ","
 		end
 	end
 
-	return baseString
+	return table.concat(newArray)
 end
-
---Generate a signature
---Generate the actual header
 
 function OAuthUtil.new(parameters: headerInformation)
 	if not parameters.consumerSecret then error("Request failed: Cannot generate header without consumerSecret") end
@@ -165,7 +161,8 @@ function OAuthUtil.new(parameters: headerInformation)
 		["oauth_token_secret"] = parameters.tokenSecret,
 		["oauth_consumer_secret"] = parameters.consumerSecret,
 		["requestType"] = parameters.requestType,
-		["requestUrl"] = parameters.requestUrl -- example https://api.schoology.com/
+ 		["requestUrl"] = parameters.requestUrl, -- example
+		["usedNonces"] = {},
 	}
 
 	setmetatable(requestInformation, OAuthUtil)
@@ -194,13 +191,13 @@ function OAuthUtil:createSignature(newRequestInformation: string): string
 	local sortOrder = sortParameters(encodedParameters)
 
 	local methodUrlString = `{OAuthUtil.encodeString(self.requestType)}&{OAuthUtil.encodeString(self.requestUrl)}`
-	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters,true)
+	local baseParameterString = OAuthUtil.createSignatureBaseString(sortOrder, encodedParameters, true)
 
 	baseParameterString = OAuthUtil.encodeString(baseParameterString)
 
 	local signatureBaseString = methodUrlString .. "&"  .. baseParameterString
 	local oauth_signature = generateSignature(self.parameters.oauth_signature_method,self.oauth_consumer_secret,self.oauth_token_secret, signatureBaseString)
-	oauth_signature = OAuthUtil.encodeString(base64.encode(OAuthUtil.convertHexToString(oauth_signature)))
+	oauth_signature = (self.parameters.oauth_signature_method~="PLAINTEXT") and OAuthUtil.encodeString(base64.encode(OAuthUtil.convertHexToString(oauth_signature))) or oauth_signature
 
 	return oauth_signature
 end
@@ -208,7 +205,7 @@ end
 function OAuthUtil:generateHeader(overrideNonce: string, overrideTimestamp: number): string
 	local newRequestInformation = table.clone(self.parameters)
 	
-	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil.generateNonce()
+	newRequestInformation["oauth_nonce"] = overrideNonce or OAuthUtil:generateNonce()
 	newRequestInformation["oauth_timestamp"] = overrideTimestamp or os.time()
 	newRequestInformation["oauth_signature"]  = self:createSignature(newRequestInformation,self.requestType)
 

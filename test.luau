@@ -90,7 +90,56 @@ local function testHmac()
     print("Hashing tests passed.")
 end
 
-testHmac()
+local function generateRandomString(length)
+    local charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    local randomString = ""
+    local charsetLength = string.len(charset)
+
+    for i = 1, length do
+        local randomIndex = math.random(1, charsetLength)
+        local randomChar = string.sub(charset, randomIndex, randomIndex)
+        randomString = randomString .. randomChar
+    end
+
+    return randomString
+end
+
+local function benchmarkHeaderGeneration(signatureType: "HMAC-SHA1" | "HMAC-SHA256" | "HMAC-SHA512" | "PLAINTEXT")
+    local iterations = 10000
+    local startTime = os.clock()
+ 
+     for i = 1, iterations do
+         local test = OAuthUtil.new({
+             consumerKey = generateRandomString(math.random(10,15)),
+             token = generateRandomString(math.random(10,15)),
+             consumerSecret = generateRandomString(math.random(10,15)),
+             tokenSecret = generateRandomString(math.random(10,15)),
+             callbackUrl = nil,
+             signatureMethod = signatureType,
+             requestType = "GET",
+             requestUrl = "https://www.google.com/",
+         })
+ 
+        test:generateHeader(generateRandomString(math.random(10,15)), 1424991993)
+     end
+ 
+     local endTime = os.clock()
+     local elapsedTime = endTime - startTime
+     local averageTime = elapsedTime / iterations
+ 
+     print("Benchmark results for: " .. signatureType)
+     print("Iterations: " .. iterations)
+     print("Total time: " .. elapsedTime .. " seconds")
+     print("Average time per iteration: " .. averageTime .. " seconds")
+ end
+
 testHexConversion()
 testPercentEncoding()
 testHeaders()
+
+local signatureTypes = {"HMAC-SHA1", "HMAC-SHA256", "HMAC-SHA512", "PLAINTEXT"}
+
+for i,v in pairs(signatureTypes) do
+    benchmarkHeaderGeneration(v)
+end 
+
